@@ -10,6 +10,23 @@ Aucune installation de Python sur ton PC. Tout se passe dans le cloud.
 - Git installé sur ton PC (WSL ou Windows natif)
 - Les fichiers du projet (ce dossier)
 
+## Structure des fichiers à pousser
+
+GitHub Actions ne détecte les workflows **que** dans `.github/workflows/`. Le projet doit donc avoir cette structure avant le push :
+
+```
+etcetera/
+├── .github/
+│   └── workflows/
+│       └── build.yml       ← déclenche la compilation automatique
+├── etcetera.py
+├── README.md
+├── LICENSE
+└── .gitignore
+```
+
+> ⚠️ Si `build.yml` est à la racine au lieu de `.github/workflows/`, l'onglet Actions sera vide et rien ne se compilera.
+
 ---
 
 ## ÉTAPE 1 — Créer un compte GitHub (si pas déjà fait)
@@ -50,20 +67,24 @@ git init
 git config --global user.email "ton@email.com"
 git config --global user.name "Ton Nom"
 
-# 4. Ajouter tous les fichiers
+# 4. Créer le dossier workflows (OBLIGATOIRE pour GitHub Actions)
+mkdir -p .github/workflows
+mv build.yml .github/workflows/build.yml
+
+# 5. Ajouter tous les fichiers
 git add .
 
-# 5. Premier commit
-git commit -m "Initial commit - Etcetera v2"
+# 6. Premier commit
+git commit -m "Initial commit - Etcetera"
 
-# 6. Renommer la branche en 'main'
+# 7. Renommer la branche en 'main'
 git branch -M main
 
-# 7. Connecter au repo GitHub
+# 8. Connecter au repo GitHub
 #    Remplace TON_USERNAME par ton nom GitHub
 git remote add origin https://github.com/TON_USERNAME/etcetera.git
 
-# 8. Pousser le code
+# 9. Pousser le code
 git push -u origin main
 ```
 
@@ -91,8 +112,10 @@ Quand Git demande le mot de passe → colle ce token.
 
 1. Va sur ton repo : `https://github.com/TON_USERNAME/etcetera`
 2. Clique sur l'onglet **Actions**
-3. Tu vois "Build Etcetera.exe" en cours d'exécution (icône jaune ⏳)
+3. Tu dois voir "Build Etcetera.exe" en cours d'exécution (icône jaune ⏳)
 4. Attends ~5 minutes que ça se termine (icône verte ✅)
+
+> ⚠️ Si l'onglet Actions est **vide** → le fichier `build.yml` n'est pas au bon endroit. Vérifie que tu as bien un dossier `.github/workflows/` dans ton repo (visible dans l'onglet **Code**).
 
 Si c'est rouge ❌ → clique dessus pour voir l'erreur, et dis-moi ce que ça affiche.
 
