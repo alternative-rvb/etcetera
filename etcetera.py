@@ -71,6 +71,7 @@ class EtceteraApp(ctk.CTk):
         self.debug_logs       = []
         self._target_hwnd     = None   # fenêtre cible pour l'injection
         self._tray_icon       = None   # icône system tray
+        self._audio_running   = False  # verrou anti-double thread audio
 
         self._build_ui()
         self._load_model()
@@ -131,7 +132,7 @@ class EtceteraApp(ctk.CTk):
         ).pack(side="left", padx=(0, 15))
 
         ctk.CTkLabel(toolbar, text="Modèle :", font=ctk.CTkFont(size=12)).pack(side="left", padx=(0, 5))
-        self.model_var = ctk.StringVar(value="Rapide (turbo)")
+        self.model_var = ctk.StringVar(value="Léger (small)")
         ctk.CTkOptionMenu(
             toolbar, values=list(MODELS.keys()),
             variable=self.model_var, width=165,
@@ -274,7 +275,7 @@ class EtceteraApp(ctk.CTk):
             self._log_debug(f"[Hotkey] {ex}")
 
     # ─── Modèle Whisper ───────────────────────────────────────────────────────
-    def _load_model(self, model_size="turbo"):
+    def _load_model(self, model_size="small"):
         def load():
             self.status_queue.put(("status", f"⏳ Chargement modèle '{model_size}'..."))
             try:
@@ -301,10 +302,11 @@ class EtceteraApp(ctk.CTk):
             self._start_recording()
 
     def _start_recording(self):
-        if self.model is None:
+        if self.model is None or self._audio_running:
             return
-        self.recording    = True
-        self.audio_frames = []
+        self._audio_running = True
+        self.recording      = True
+        self.audio_frames   = []
         self.record_btn.configure(
             text="⏹️  Arrêter",
             fg_color="#37474f", hover_color="#263238"
@@ -336,6 +338,7 @@ class EtceteraApp(ctk.CTk):
             self.status_queue.put(("volume", vol))
         stream.stop_stream()
         stream.close()
+        self._audio_running = False
 
     def _transcribe(self):
         if not self.audio_frames:
@@ -497,16 +500,20 @@ class EtceteraApp(ctk.CTk):
                     text, do_inject = value
                     self._add_to_history(text)
                     if do_inject:
-                        ok = self._inject_text(text)
-                        msg = "✅ Texte injecté !" if ok else "⚠️ Injection échouée — copié"
-                        color = "#4caf50" if ok else "#ff9800"
-                        if not ok:
-                            self._log_debug("[Injection] Injection échouée, texte copié dans le presse-papiers")
+                        self._set_status("⏳ Injection...", "#888")
+                        def _do_inject(t=text):
+                            ok = self._inject_text(t)
+                            msg   = "✅ Texte injecté !" if ok else "⚠️ Injection échouée — copié"
+                            color = "#4caf50" if ok else "#ff9800"
+                            if not ok:
+                                self._log_debug("[Injection] Injection échouée")
+                            self.after(0, lambda: self._set_status(msg, color))
+                            self.after(2500, lambda: self._set_status("✅ Prêt", "#4caf50"))
+                        threading.Thread(target=_do_inject, daemon=True).start()
                     else:
                         pyperclip.copy(text)
-                        msg, color = "✅ Copié dans le presse-papiers", "#4caf50"
-                    self._set_status(msg, color)
-                    self.after(2500, lambda: self._set_status("✅ Prêt", "#4caf50"))
+                        self._set_status("✅ Copié dans le presse-papiers", "#4caf50")
+                        self.after(2500, lambda: self._set_status("✅ Prêt", "#4caf50"))
 
                 elif msg_type == "start_hotkey":
                     # self.recording est déjà True (posé dans le callback hotkey)
@@ -522,9 +529,20 @@ class EtceteraApp(ctk.CTk):
             pass
         self.after(50, self._poll_status)
 
+    # Correspondance couleurs hex → RGB pour l'icône tray
+    _HEX_TO_RGB = {
+        "#f44336": (244, 67,  54),   # enregistrement → rouge vif
+        "#4caf50": (76,  175, 80),   # prêt           → vert
+        "#ff9800": (255, 152, 0),    # avertissement  → orange
+        "#ff5722": (255, 87,  34),   # erreur         → rouge-orange
+        "#888":    (100, 100, 100),  # chargement     → gris
+    }
+
     def _set_status(self, text, color):
         self.status_badge.configure(text=text, text_color=color)
         self._status_dot.itemconfig(self._dot_oval, fill=color)
+        rgb = self._HEX_TO_RGB.get(color, (100, 100, 100))
+        self._update_tray_icon(rgb)
 
     # ─── Debug ────────────────────────────────────────────────────────────────
     def _log_debug(self, msg):
@@ -625,11 +643,15 @@ class EtceteraApp(ctk.CTk):
         self.counter_label.configure(text="0 caractères • 0 mots")
 
     # ─── System tray ──────────────────────────────────────────────────────────
-    def _create_tray_image(self):
+    def _create_tray_image(self, dot_color=(198, 40, 40)):
         img = Image.new("RGB", (64, 64), color=(13, 13, 26))
         draw = ImageDraw.Draw(img)
-        draw.ellipse((14, 14, 50, 50), fill=(198, 40, 40))
+        draw.ellipse((14, 14, 50, 50), fill=dot_color)
         return img
+
+    def _update_tray_icon(self, dot_color):
+        if self._tray_icon is not None:
+            self._tray_icon.icon = self._create_tray_image(dot_color)
 
     def _start_tray(self):
         if self._tray_icon is not None:
