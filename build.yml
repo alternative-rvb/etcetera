@@ -1,0 +1,41 @@
+name: Build Etcetera.exe
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install customtkinter
+        pip install faster-whisper
+        pip install pyaudio
+        pip install pyautogui
+        pip install pyperclip
+        pip install keyboard
+        pip install pyinstaller
+
+    - name: Build .exe
+      run: |
+        pyinstaller --onefile --windowed --name Etcetera etcetera.py
+
+    - name: Upload artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: Etcetera-Windows
+        path: dist/Etcetera.exe
+        retention-days: 30
