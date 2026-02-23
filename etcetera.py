@@ -5,6 +5,7 @@ Basée sur Whisper (OpenAI) - 100% locale, 100% gratuite
 - Injecte le texte directement là où se trouve le curseur
 """
 
+import re
 import tkinter as tk
 import customtkinter as ctk
 import threading
@@ -279,7 +280,7 @@ class EtceteraApp(ctk.CTk):
         def load():
             self.status_queue.put(("status", f"⏳ Chargement modèle '{model_size}'..."))
             try:
-                self.model      = WhisperModel(model_size, device="cpu", compute_type="int8", num_workers=2)
+                self.model      = WhisperModel(model_size, device="cpu", compute_type="int8", num_workers=2, cpu_threads=4)
                 self.model_name = model_size
                 self.status_queue.put(("ready", f"✅ Prêt — {model_size}"))
             except Exception as e:
@@ -357,6 +358,7 @@ class EtceteraApp(ctk.CTk):
             lang = LANGUAGES[self.lang_var.get()]  # None = auto-détection
             transcribe_kwargs = dict(
                 beam_size=1,
+                temperature=0,
                 no_speech_threshold=0.6,
                 log_prob_threshold=-1.0,
                 condition_on_previous_text=False,
@@ -364,7 +366,9 @@ class EtceteraApp(ctk.CTk):
             if lang is not None:
                 transcribe_kwargs["language"] = lang
             def _collect(segs):
-                return " ".join(s.text.strip() for s in segs if s.no_speech_prob < 0.5).strip()
+                raw = " ".join(s.text.strip() for s in segs if s.no_speech_prob < 0.5).strip()
+                # Assure un espace après . , ! ? : ; sauf en fin de chaîne
+                return re.sub(r'([.,!?:;])(?=[^\s])', r'\1 ', raw)
 
             try:
                 segs, info = self.model.transcribe(

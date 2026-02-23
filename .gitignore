@@ -25,3 +25,7 @@ desktop.ini
 # IDE
 .vscode/
 .idea/
+
+# CUSTOM
+
+test.md
