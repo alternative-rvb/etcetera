@@ -29,12 +29,13 @@ CHANNELS    = 1
 FORMAT      = pyaudio.paInt16
 
 LANGUAGES = {
-    "Français":  "fr",
-    "English":   "en",
-    "Español":   "es",
-    "Deutsch":   "de",
-    "Italiano":  "it",
-    "Português": "pt",
+    "Auto-détection": None,
+    "Français":       "fr",
+    "English":        "en",
+    "Español":        "es",
+    "Deutsch":        "de",
+    "Italiano":       "it",
+    "Português":      "pt",
 }
 
 MODELS = {
@@ -61,11 +62,12 @@ class EtceteraApp(ctk.CTk):
         self.audio_frames    = []
         self.p               = pyaudio.PyAudio()
         self.status_queue    = queue.Queue()
-        self.inject_mode     = True
-        self._placeholder_on = True
-        self._inject_after   = False
-        self.debug_mode      = False
-        self.debug_logs      = []
+        self.inject_mode      = True
+        self._placeholder_on  = True
+        self._inject_after    = False
+        self.debug_mode       = False
+        self.debug_logs       = []
+        self._target_hwnd     = None   # fenêtre cible pour l'injection
 
         self._build_ui()
         self._load_model()
@@ -109,7 +111,7 @@ class EtceteraApp(ctk.CTk):
         toolbar.pack(fill="x", padx=15, pady=(10, 0))
 
         ctk.CTkLabel(toolbar, text="Langue :", font=ctk.CTkFont(size=12)).pack(side="left", padx=(0, 5))
-        self.lang_var = ctk.StringVar(value="Français")
+        self.lang_var = ctk.StringVar(value="Auto-détection")
         ctk.CTkOptionMenu(
             toolbar, values=list(LANGUAGES.keys()),
             variable=self.lang_var, width=130,
@@ -240,12 +242,21 @@ class EtceteraApp(ctk.CTk):
     def _register_hotkey(self):
         def on_space_press(e):
             if keyboard.is_pressed("ctrl") and keyboard.is_pressed("shift"):
+                # Verrou immédiat pour éviter les déclenchements multiples
+                # dus à la répétition automatique de la touche maintenue
                 if not self.hotkey_held and not self.recording and self.model:
+                    # Capturer la fenêtre active AVANT que le focus bouge
+                    try:
+                        import ctypes
+                        self._target_hwnd = ctypes.windll.user32.GetForegroundWindow()
+                    except Exception:
+                        self._target_hwnd = None
                     self.hotkey_held = True
+                    self.recording   = True   # bloque tout nouveau déclenchement
                     self.status_queue.put(("start_hotkey", None))
 
         def on_space_release(e):
-            if self.hotkey_held and self.recording:
+            if self.hotkey_held:
                 self.hotkey_held = False
                 self.status_queue.put(("stop_hotkey", None))
 
@@ -334,21 +345,35 @@ class EtceteraApp(ctk.CTk):
         wf.close()
 
         try:
-            lang = LANGUAGES[self.lang_var.get()]
+            lang = LANGUAGES[self.lang_var.get()]  # None = auto-détection
+            transcribe_kwargs = dict(
+                beam_size=5,
+                no_speech_threshold=0.6,
+                log_prob_threshold=-1.0,
+                condition_on_previous_text=False,
+            )
+            if lang is not None:
+                transcribe_kwargs["language"] = lang
             try:
-                segments, _ = self.model.transcribe(
-                    tmp.name, language=lang,
-                    beam_size=3, vad_filter=True
+                segments, info = self.model.transcribe(
+                    tmp.name, vad_filter=True, **transcribe_kwargs
                 )
-                text = " ".join(s.text.strip() for s in segments).strip()
+                text = " ".join(
+                    s.text.strip() for s in segments
+                    if s.no_speech_prob < 0.5
+                ).strip()
+                if lang is None and text:
+                    self._log_debug(f"[Lang] Détectée : {info.language} ({info.language_probability:.0%})")
             except Exception as vad_err:
                 if "silero_vad" in str(vad_err) or "NO_SUCH_FILE" in str(vad_err) or "doesn't exist" in str(vad_err):
                     self._log_debug(f"[VAD] Modèle VAD manquant, transcription sans filtre : {vad_err}")
-                    segments, _ = self.model.transcribe(
-                        tmp.name, language=lang,
-                        beam_size=3, vad_filter=False
+                    segments, info = self.model.transcribe(
+                        tmp.name, vad_filter=False, **transcribe_kwargs
                     )
-                    text = " ".join(s.text.strip() for s in segments).strip()
+                    text = " ".join(
+                        s.text.strip() for s in segments
+                        if s.no_speech_prob < 0.5
+                    ).strip()
                 else:
                     raise
 
@@ -369,7 +394,7 @@ class EtceteraApp(ctk.CTk):
     def _inject_text(self, text):
         """
         Place le texte dans le presse-papiers et simule Ctrl+V
-        dans la fenêtre active (VS Code, navigateur, Notepad, etc.)
+        dans la fenêtre qui était active avant la dictée.
         """
         try:
             old = ""
@@ -379,7 +404,18 @@ class EtceteraApp(ctk.CTk):
                 pass
 
             pyperclip.copy(text)
-            time.sleep(0.15)
+
+            # Redonner le focus à la fenêtre cible avant de coller
+            if self._target_hwnd:
+                try:
+                    import ctypes
+                    ctypes.windll.user32.SetForegroundWindow(self._target_hwnd)
+                    time.sleep(0.15)
+                except Exception:
+                    time.sleep(0.15)
+            else:
+                time.sleep(0.15)
+
             pyautogui.hotkey("ctrl", "v")
 
             # Restaure le presse-papiers après 1 s
