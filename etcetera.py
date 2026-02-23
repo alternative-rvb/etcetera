@@ -17,6 +17,8 @@ import queue
 import pyperclip
 import pyautogui
 import keyboard
+import pystray
+from PIL import Image, ImageDraw
 from faster_whisper import WhisperModel
 
 # ─── Configuration ────────────────────────────────────────────────────────────
@@ -39,9 +41,9 @@ LANGUAGES = {
 }
 
 MODELS = {
-    "Rapide (tiny)":    "tiny",
-    "Équilibré (base)": "base",
-    "Précis (small)":   "small",
+    "Léger (small)":   "small",
+    "Rapide (turbo)":  "turbo",
+    "Précis (large)":  "large-v3",
 }
 
 
@@ -68,6 +70,7 @@ class EtceteraApp(ctk.CTk):
         self.debug_mode       = False
         self.debug_logs       = []
         self._target_hwnd     = None   # fenêtre cible pour l'injection
+        self._tray_icon       = None   # icône system tray
 
         self._build_ui()
         self._load_model()
@@ -82,17 +85,26 @@ class EtceteraApp(ctk.CTk):
         header.pack_propagate(False)
 
         ctk.CTkLabel(
-            header, text="🎙️  Etcetera v2",
+            header, text="Etcetera v2",
             font=ctk.CTkFont(size=22, weight="bold"),
             text_color="#4fc3f7"
         ).pack(side="left", padx=20, pady=12)
 
-        self.status_badge = ctk.CTkLabel(
-            header, text="⏳ Chargement...",
-            font=ctk.CTkFont(size=12), text_color="#888",
-            fg_color="#1a1a2e", corner_radius=8, padx=10, pady=4
+        status_frame = ctk.CTkFrame(header, fg_color="#1a1a2e", corner_radius=8)
+        status_frame.pack(side="right", padx=20, pady=18)
+
+        self._status_dot = tk.Canvas(
+            status_frame, width=10, height=10,
+            bg="#1a1a2e", highlightthickness=0
         )
-        self.status_badge.pack(side="right", padx=20, pady=18)
+        self._status_dot.pack(side="left", padx=(10, 4), pady=6)
+        self._dot_oval = self._status_dot.create_oval(1, 1, 9, 9, fill="#555", outline="")
+
+        self.status_badge = ctk.CTkLabel(
+            status_frame, text="Chargement...",
+            font=ctk.CTkFont(size=12), text_color="#888"
+        )
+        self.status_badge.pack(side="left", padx=(0, 10), pady=6)
 
         # Bandeau raccourci
         hotkey_frame = ctk.CTkFrame(self, fg_color="#1a2744", corner_radius=0, height=36)
@@ -119,7 +131,7 @@ class EtceteraApp(ctk.CTk):
         ).pack(side="left", padx=(0, 15))
 
         ctk.CTkLabel(toolbar, text="Modèle :", font=ctk.CTkFont(size=12)).pack(side="left", padx=(0, 5))
-        self.model_var = ctk.StringVar(value="Rapide (tiny)")
+        self.model_var = ctk.StringVar(value="Rapide (turbo)")
         ctk.CTkOptionMenu(
             toolbar, values=list(MODELS.keys()),
             variable=self.model_var, width=165,
@@ -171,11 +183,6 @@ class EtceteraApp(ctk.CTk):
         self.volume_bar = ctk.CTkProgressBar(vol_frame, width=200, height=8, corner_radius=4)
         self.volume_bar.set(0)
         self.volume_bar.pack(side="left", padx=10)
-        self.volume_label = ctk.CTkLabel(
-            vol_frame, text="", width=130,
-            font=ctk.CTkFont(family="Courier", size=11), text_color="#4fc3f7"
-        )
-        self.volume_label.pack(side="left")
 
         # Panel debug (caché par défaut)
         self.debug_frame = ctk.CTkFrame(self, corner_radius=8, fg_color="#1a1a1a", border_width=1, border_color="#ff5722")
@@ -267,7 +274,7 @@ class EtceteraApp(ctk.CTk):
             self._log_debug(f"[Hotkey] {ex}")
 
     # ─── Modèle Whisper ───────────────────────────────────────────────────────
-    def _load_model(self, model_size="tiny"):
+    def _load_model(self, model_size="turbo"):
         def load():
             self.status_queue.put(("status", f"⏳ Chargement modèle '{model_size}'..."))
             try:
@@ -310,7 +317,6 @@ class EtceteraApp(ctk.CTk):
         self._inject_after = inject
         self.record_btn.configure(state="disabled", text="⏳ Transcription IA...")
         self.volume_bar.set(0)
-        self.volume_label.configure(text="")
         self.status_queue.put(("status", "⏳ Transcription IA..."))
         threading.Thread(target=self._transcribe, daemon=True).start()
 
@@ -486,8 +492,6 @@ class EtceteraApp(ctk.CTk):
 
                 elif msg_type == "volume":
                     self.volume_bar.set(value)
-                    bars = int(value * 12)
-                    self.volume_label.configure(text="█" * bars + "░" * (12 - bars))
 
                 elif msg_type == "insert_text":
                     text, do_inject = value
@@ -520,6 +524,7 @@ class EtceteraApp(ctk.CTk):
 
     def _set_status(self, text, color):
         self.status_badge.configure(text=text, text_color=color)
+        self._status_dot.itemconfig(self._dot_oval, fill=color)
 
     # ─── Debug ────────────────────────────────────────────────────────────────
     def _log_debug(self, msg):
@@ -619,15 +624,43 @@ class EtceteraApp(ctk.CTk):
         self._set_placeholder()
         self.counter_label.configure(text="0 caractères • 0 mots")
 
-    # ─── Fermeture ────────────────────────────────────────────────────────────
-    def on_close(self):
+    # ─── System tray ──────────────────────────────────────────────────────────
+    def _create_tray_image(self):
+        img = Image.new("RGB", (64, 64), color=(13, 13, 26))
+        draw = ImageDraw.Draw(img)
+        draw.ellipse((14, 14, 50, 50), fill=(198, 40, 40))
+        return img
+
+    def _start_tray(self):
+        if self._tray_icon is not None:
+            return
+        menu = pystray.Menu(
+            pystray.MenuItem("Afficher", lambda: self.after(0, self._show_window), default=True),
+            pystray.MenuItem("Quitter",  lambda: self.after(0, self._quit_app)),
+        )
+        self._tray_icon = pystray.Icon("Etcetera", self._create_tray_image(), "Etcetera", menu)
+        threading.Thread(target=self._tray_icon.run, daemon=True).start()
+
+    def _show_window(self):
+        self.deiconify()
+        self.lift()
+        self.focus_force()
+
+    def _quit_app(self):
         self.recording = False
         try:
             keyboard.unhook_all()
         except Exception:
             pass
         self.p.terminate()
+        if self._tray_icon:
+            self._tray_icon.stop()
         self.destroy()
+
+    # ─── Fermeture (croix) → réduit dans le tray ──────────────────────────────
+    def on_close(self):
+        self.withdraw()
+        self._start_tray()
 
 
 # ─── Lancement ────────────────────────────────────────────────────────────────

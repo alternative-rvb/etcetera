@@ -5,6 +5,10 @@ on:
     branches: [ main ]
   workflow_dispatch:
 
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
@@ -30,6 +34,8 @@ jobs:
         pip install pyautogui
         pip install pyperclip
         pip install keyboard
+        pip install pystray
+        pip install pillow
         pip install pyinstaller
 
     - name: Build .exe
