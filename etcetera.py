@@ -507,8 +507,10 @@ class EtceteraApp(ctk.CTk):
                             color = "#4caf50" if ok else "#ff9800"
                             if not ok:
                                 self._log_debug("[Injection] Injection échouée")
-                            self.after(0, lambda: self._set_status(msg, color))
-                            self.after(2500, lambda: self._set_status("✅ Prêt", "#4caf50"))
+                            self.after(0, lambda m=msg, c=color: (
+                                self._set_status(m, c),
+                                self.after(2500, lambda: self._set_status("✅ Prêt", "#4caf50"))
+                            ))
                         threading.Thread(target=_do_inject, daemon=True).start()
                     else:
                         pyperclip.copy(text)
@@ -660,7 +662,9 @@ class EtceteraApp(ctk.CTk):
             pystray.MenuItem("Afficher", lambda: self.after(0, self._show_window), default=True),
             pystray.MenuItem("Quitter",  lambda: self.after(0, self._quit_app)),
         )
-        self._tray_icon = pystray.Icon("Etcetera", self._create_tray_image(), "Etcetera", menu)
+        # Couleur initiale selon l'état courant (prêt=vert, sinon gris)
+        init_color = (76, 175, 80) if self.model else (100, 100, 100)
+        self._tray_icon = pystray.Icon("Etcetera", self._create_tray_image(init_color), "Etcetera", menu)
         threading.Thread(target=self._tray_icon.run, daemon=True).start()
 
     def _show_window(self):
