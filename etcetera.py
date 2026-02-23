@@ -203,6 +203,7 @@ class EtceteraApp(ctk.CTk):
         # Boutons
         bottom = ctk.CTkFrame(self, fg_color="transparent")
         bottom.pack(fill="x", padx=15, pady=(6, 12))
+        self._bottom_ref = bottom
 
         self.record_btn = ctk.CTkButton(
             bottom,
@@ -252,7 +253,7 @@ class EtceteraApp(ctk.CTk):
             keyboard.on_press_key("space", on_space_press)
             keyboard.on_release_key("space", on_space_release)
         except Exception as ex:
-            print(f"[Hotkey] {ex}")
+            self._log_debug(f"[Hotkey] {ex}")
 
     # ─── Modèle Whisper ───────────────────────────────────────────────────────
     def _load_model(self, model_size="tiny"):
@@ -381,7 +382,7 @@ class EtceteraApp(ctk.CTk):
             return True
 
         except Exception as e:
-            print(f"[Injection] {e}")
+            self._log_debug(f"[Injection] {e}")
             return False
 
     # ─── Polling UI ───────────────────────────────────────────────────────────
@@ -410,6 +411,7 @@ class EtceteraApp(ctk.CTk):
 
                 elif msg_type == "error":
                     self._set_status(value, "#ff5722")
+                    self._log_debug(f"[Erreur] {value}")
                     self.record_btn.configure(
                         state="normal",
                         text="🔴  Démarrer la dictée",
@@ -418,6 +420,7 @@ class EtceteraApp(ctk.CTk):
 
                 elif msg_type == "warn":
                     self._set_status(value, "#ff9800")
+                    self._log_debug(f"[Avertissement] {value}")
                     self.after(2000, lambda: self._set_status("✅ Prêt", "#4caf50"))
                     self.record_btn.configure(
                         state="normal",
@@ -437,6 +440,8 @@ class EtceteraApp(ctk.CTk):
                         ok = self._inject_text(text)
                         msg = "✅ Texte injecté !" if ok else "⚠️ Injection échouée — copié"
                         color = "#4caf50" if ok else "#ff9800"
+                        if not ok:
+                            self._log_debug("[Injection] Injection échouée, texte copié dans le presse-papiers")
                     else:
                         pyperclip.copy(text)
                         msg, color = "✅ Copié dans le presse-papiers", "#4caf50"
@@ -457,6 +462,39 @@ class EtceteraApp(ctk.CTk):
 
     def _set_status(self, text, color):
         self.status_badge.configure(text=text, text_color=color)
+
+    # ─── Debug ────────────────────────────────────────────────────────────────
+    def _log_debug(self, msg):
+        ts = time.strftime("%H:%M:%S")
+        entry = f"[{ts}] {msg}"
+        self.debug_logs.append(entry)
+        if self.debug_mode:
+            self.debug_textbox.configure(state="normal")
+            self.debug_textbox.insert("end", entry + "\n")
+            self.debug_textbox.see("end")
+            self.debug_textbox.configure(state="disabled")
+
+    def _toggle_debug(self):
+        self.debug_mode = not self.debug_mode
+        if self.debug_mode:
+            self.debug_btn.configure(fg_color="#bf360c", hover_color="#e64a19")
+            # Remplir avec les logs déjà accumulés
+            self.debug_textbox.configure(state="normal")
+            self.debug_textbox.delete("1.0", "end")
+            for entry in self.debug_logs:
+                self.debug_textbox.insert("end", entry + "\n")
+            self.debug_textbox.see("end")
+            self.debug_textbox.configure(state="disabled")
+            self.debug_frame.pack(fill="x", padx=15, pady=(4, 0), before=self._bottom_ref)
+        else:
+            self.debug_btn.configure(fg_color="#333", hover_color="#444")
+            self.debug_frame.pack_forget()
+
+    def _copy_debug_logs(self):
+        if self.debug_logs:
+            pyperclip.copy("\n".join(self.debug_logs))
+            self._set_status("✅ Logs copiés !", "#4caf50")
+            self.after(2000, lambda: self._set_status("✅ Prêt", "#4caf50"))
 
     # ─── Zone texte ───────────────────────────────────────────────────────────
     def _set_placeholder(self):
