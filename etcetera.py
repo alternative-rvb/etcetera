@@ -335,11 +335,22 @@ class EtceteraApp(ctk.CTk):
 
         try:
             lang = LANGUAGES[self.lang_var.get()]
-            segments, _ = self.model.transcribe(
-                tmp.name, language=lang,
-                beam_size=3, vad_filter=True
-            )
-            text = " ".join(s.text.strip() for s in segments).strip()
+            try:
+                segments, _ = self.model.transcribe(
+                    tmp.name, language=lang,
+                    beam_size=3, vad_filter=True
+                )
+                text = " ".join(s.text.strip() for s in segments).strip()
+            except Exception as vad_err:
+                if "silero_vad" in str(vad_err) or "NO_SUCH_FILE" in str(vad_err) or "doesn't exist" in str(vad_err):
+                    self._log_debug(f"[VAD] Modèle VAD manquant, transcription sans filtre : {vad_err}")
+                    segments, _ = self.model.transcribe(
+                        tmp.name, language=lang,
+                        beam_size=3, vad_filter=False
+                    )
+                    text = " ".join(s.text.strip() for s in segments).strip()
+                else:
+                    raise
 
             if text:
                 do_inject = self._inject_after or self.inject_var.get()
