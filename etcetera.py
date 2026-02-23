@@ -406,13 +406,22 @@ class EtceteraApp(ctk.CTk):
             pyperclip.copy(text)
 
             # Redonner le focus à la fenêtre cible avant de coller
+            # SetForegroundWindow seul est bloqué par Windows depuis un thread
+            # non-GUI ; AttachThreadInput contourne cette restriction.
             if self._target_hwnd:
                 try:
                     import ctypes
-                    ctypes.windll.user32.SetForegroundWindow(self._target_hwnd)
-                    time.sleep(0.15)
-                except Exception:
-                    time.sleep(0.15)
+                    u32 = ctypes.windll.user32
+                    fg_tid  = u32.GetWindowThreadProcessId(u32.GetForegroundWindow(), None)
+                    our_tid = ctypes.windll.kernel32.GetCurrentThreadId()
+                    if fg_tid != our_tid:
+                        u32.AttachThreadInput(our_tid, fg_tid, True)
+                    u32.SetForegroundWindow(self._target_hwnd)
+                    if fg_tid != our_tid:
+                        u32.AttachThreadInput(our_tid, fg_tid, False)
+                except Exception as ex:
+                    self._log_debug(f"[Focus] {ex}")
+                time.sleep(0.15)
             else:
                 time.sleep(0.15)
 
@@ -496,7 +505,9 @@ class EtceteraApp(ctk.CTk):
                     self.after(2500, lambda: self._set_status("✅ Prêt", "#4caf50"))
 
                 elif msg_type == "start_hotkey":
-                    if self.model and not self.recording:
+                    # self.recording est déjà True (posé dans le callback hotkey)
+                    # On appelle directement _start_recording sans re-tester
+                    if self.model:
                         self._start_recording()
 
                 elif msg_type == "stop_hotkey":
