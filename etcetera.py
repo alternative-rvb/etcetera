@@ -279,7 +279,7 @@ class EtceteraApp(ctk.CTk):
         def load():
             self.status_queue.put(("status", f"⏳ Chargement modèle '{model_size}'..."))
             try:
-                self.model      = WhisperModel(model_size, device="cpu", compute_type="int8")
+                self.model      = WhisperModel(model_size, device="cpu", compute_type="int8", num_workers=2)
                 self.model_name = model_size
                 self.status_queue.put(("ready", f"✅ Prêt — {model_size}"))
             except Exception as e:
@@ -356,33 +356,30 @@ class EtceteraApp(ctk.CTk):
         try:
             lang = LANGUAGES[self.lang_var.get()]  # None = auto-détection
             transcribe_kwargs = dict(
-                beam_size=5,
+                beam_size=1,
                 no_speech_threshold=0.6,
                 log_prob_threshold=-1.0,
                 condition_on_previous_text=False,
             )
             if lang is not None:
                 transcribe_kwargs["language"] = lang
+            def _collect(segs):
+                return " ".join(s.text.strip() for s in segs if s.no_speech_prob < 0.5).strip()
+
             try:
-                segments, info = self.model.transcribe(
+                segs, info = self.model.transcribe(
                     tmp.name, vad_filter=True, **transcribe_kwargs
                 )
-                text = " ".join(
-                    s.text.strip() for s in segments
-                    if s.no_speech_prob < 0.5
-                ).strip()
+                text = _collect(segs)
                 if lang is None and text:
                     self._log_debug(f"[Lang] Détectée : {info.language} ({info.language_probability:.0%})")
             except Exception as vad_err:
                 if "silero_vad" in str(vad_err) or "NO_SUCH_FILE" in str(vad_err) or "doesn't exist" in str(vad_err):
                     self._log_debug(f"[VAD] Modèle VAD manquant, transcription sans filtre : {vad_err}")
-                    segments, info = self.model.transcribe(
+                    segs, info = self.model.transcribe(
                         tmp.name, vad_filter=False, **transcribe_kwargs
                     )
-                    text = " ".join(
-                        s.text.strip() for s in segments
-                        if s.no_speech_prob < 0.5
-                    ).strip()
+                    text = _collect(segs)
                 else:
                     raise
 
