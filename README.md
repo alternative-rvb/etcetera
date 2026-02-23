@@ -20,3 +20,7 @@ Basée sur Whisper (OpenAI) — 100% locale, aucune donnée envoyée sur interne
 ## Langues supportées
 
 Français, English, Español, Deutsch, Italiano, Português
+
+## Installation
+
+[Voir le guide d'installation complet](GUIDE_INSTALLATION.md)

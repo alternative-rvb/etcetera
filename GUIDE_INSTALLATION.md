@@ -88,23 +88,7 @@ git remote add origin https://github.com/TON_USERNAME/etcetera.git
 git push -u origin main
 ```
 
-GitHub va te demander ton **nom d'utilisateur** et un **token** (pas ton mot de passe).
-
----
-
-## ÉTAPE 3b — Créer un token GitHub (nécessaire pour le push)
-
-GitHub n'accepte plus les mots de passe pour Git. Il faut un token :
-
-1. Va sur https://github.com/settings/tokens
-2. Clique **Generate new token (classic)**
-3. Donne-lui un nom : `etcetera-push`
-4. Durée : `90 days` (ou `No expiration`)
-5. Coche la case **repo** (toute la ligne)
-6. Clique **Generate token**
-7. **Copie le token** (affiché une seule fois !)
-
-Quand Git demande le mot de passe → colle ce token.
+VS Code gère l'authentification automatiquement. Au premier `git push`, une fenêtre de navigateur s'ouvre pour confirmer ta connexion GitHub — c'est tout.
 
 ---
 

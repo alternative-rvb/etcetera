@@ -64,6 +64,8 @@ class EtceteraApp(ctk.CTk):
         self.inject_mode     = True
         self._placeholder_on = True
         self._inject_after   = False
+        self.debug_mode      = False
+        self.debug_logs      = []
 
         self._build_ui()
         self._load_model()
@@ -130,6 +132,14 @@ class EtceteraApp(ctk.CTk):
             command=lambda: setattr(self, "inject_mode", self.inject_var.get())
         ).pack(side="left", padx=(10, 0))
 
+        self.debug_btn = ctk.CTkButton(
+            toolbar, text="🐛 Debug",
+            font=ctk.CTkFont(size=12), height=28, width=90,
+            fg_color="#333", hover_color="#444",
+            command=self._toggle_debug
+        )
+        self.debug_btn.pack(side="right", padx=(0, 0))
+
         # Zone texte / historique
         text_frame = ctk.CTkFrame(self, corner_radius=10)
         text_frame.pack(fill="both", expand=True, padx=15, pady=10)
@@ -164,6 +174,31 @@ class EtceteraApp(ctk.CTk):
             font=ctk.CTkFont(family="Courier", size=11), text_color="#4fc3f7"
         )
         self.volume_label.pack(side="left")
+
+        # Panel debug (caché par défaut)
+        self.debug_frame = ctk.CTkFrame(self, corner_radius=8, fg_color="#1a1a1a", border_width=1, border_color="#ff5722")
+        # Ne pas pack() ici — affiché uniquement quand debug_mode est actif
+
+        debug_header = ctk.CTkFrame(self.debug_frame, fg_color="transparent")
+        debug_header.pack(fill="x", padx=8, pady=(6, 2))
+        ctk.CTkLabel(
+            debug_header, text="🐛 Logs d'erreurs",
+            font=ctk.CTkFont(size=11, weight="bold"), text_color="#ff5722"
+        ).pack(side="left")
+        ctk.CTkButton(
+            debug_header, text="📋 Copier les logs",
+            font=ctk.CTkFont(size=11), height=24, width=120,
+            fg_color="#333", hover_color="#444",
+            command=self._copy_debug_logs
+        ).pack(side="right")
+
+        self.debug_textbox = ctk.CTkTextbox(
+            self.debug_frame, font=ctk.CTkFont(family="Courier", size=11),
+            height=100, corner_radius=6, wrap="word",
+            text_color="#ff9800", fg_color="#111"
+        )
+        self.debug_textbox.pack(fill="x", padx=8, pady=(0, 8))
+        self.debug_textbox.configure(state="disabled")
 
         # Boutons
         bottom = ctk.CTkFrame(self, fg_color="transparent")
