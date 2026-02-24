@@ -6,6 +6,8 @@ Basée sur Whisper (OpenAI) - 100% locale, 100% gratuite
 """
 
 import re
+import struct
+import ctypes
 import tkinter as tk
 import customtkinter as ctk
 import threading
@@ -65,7 +67,6 @@ class EtceteraApp(ctk.CTk):
         self.audio_frames    = []
         self.p               = pyaudio.PyAudio()
         self.status_queue    = queue.Queue()
-        self.inject_mode      = True
         self._placeholder_on  = True
         self._inject_after    = False
         self.debug_mode       = False
@@ -381,7 +382,6 @@ class EtceteraApp(ctk.CTk):
             if all(keyboard.is_pressed(m) for m in mods):
                 if not self.hotkey_held and not self.recording and self.model:
                     try:
-                        import ctypes
                         self._target_hwnd = ctypes.windll.user32.GetForegroundWindow()
                     except Exception:
                         self._target_hwnd = None
@@ -449,7 +449,6 @@ class EtceteraApp(ctk.CTk):
         threading.Thread(target=self._transcribe, daemon=True).start()
 
     def _record_audio(self):
-        import struct
         stream = self.p.open(
             format=FORMAT, channels=CHANNELS,
             rate=SAMPLE_RATE, input=True,
@@ -563,7 +562,6 @@ class EtceteraApp(ctk.CTk):
             # non-GUI ; AttachThreadInput contourne cette restriction.
             if self._target_hwnd:
                 try:
-                    import ctypes
                     u32 = ctypes.windll.user32
                     fg_tid  = u32.GetWindowThreadProcessId(u32.GetForegroundWindow(), None)
                     our_tid = ctypes.windll.kernel32.GetCurrentThreadId()
