@@ -24,6 +24,29 @@ import pystray
 from PIL import Image, ImageDraw
 from faster_whisper import WhisperModel
 
+
+def _detect_hardware():
+    """Détecte le meilleur dispositif disponible et retourne (device, compute_type, cpu_threads, label)."""
+    cpu_threads = os.cpu_count() or 4
+
+    # Tentative CUDA
+    try:
+        import torch
+        if torch.cuda.is_available():
+            gpu_name = torch.cuda.get_device_name(0)
+            vram_gb  = torch.cuda.get_device_properties(0).total_memory / 1024**3
+            # float16 si >= 4 Go VRAM, sinon int8
+            compute  = "float16" if vram_gb >= 4 else "int8_float16"
+            return "cuda", compute, cpu_threads, f"GPU {gpu_name} ({vram_gb:.1f} Go)"
+    except Exception:
+        pass
+
+    # CPU
+    return "cpu", "int8", cpu_threads, f"CPU ({cpu_threads} cœurs)"
+
+
+HARDWARE_DEVICE, HARDWARE_COMPUTE, HARDWARE_CPU_THREADS, HARDWARE_LABEL = _detect_hardware()
+
 # ─── Configuration ────────────────────────────────────────────────────────────
 ctk.set_appearance_mode("dark")
 ctk.set_default_color_theme("blue")
@@ -93,6 +116,8 @@ class EtceteraApp(ctk.CTk):
         self.adv_mode         = False
 
         self._build_ui()
+        self.withdraw()                      # cache la fenêtre principale pendant le chargement
+        self._splash = SplashScreen(self)
         self._load_model()
         self._poll_status()
         self._register_hotkey()
@@ -138,6 +163,14 @@ class EtceteraApp(ctk.CTk):
             font=ctk.CTkFont(size=12), text_color="#7eb3ff"
         )
         self.hotkey_banner_label.pack(side="left", padx=16, pady=8)
+
+        hw_color = "#a78bfa" if HARDWARE_DEVICE == "cuda" else "#6b7280"
+        hw_icon  = "⚡" if HARDWARE_DEVICE == "cuda" else "🖥"
+        ctk.CTkLabel(
+            hotkey_frame,
+            text=f"{hw_icon} {HARDWARE_LABEL}",
+            font=ctk.CTkFont(size=11), text_color=hw_color
+        ).pack(side="right", padx=16, pady=8)
 
         # Toolbar
         toolbar = ctk.CTkFrame(self, fg_color="transparent")
@@ -405,11 +438,36 @@ class EtceteraApp(ctk.CTk):
         def load():
             self.status_queue.put(("status", f"⏳ Chargement modèle '{model_size}'..."))
             try:
-                self.model      = WhisperModel(model_size, device="cpu", compute_type="int8", num_workers=2, cpu_threads=4)
+                num_workers = min(4, max(1, HARDWARE_CPU_THREADS // 2))
+                self.model = WhisperModel(
+                    model_size,
+                    device=HARDWARE_DEVICE,
+                    compute_type=HARDWARE_COMPUTE,
+                    num_workers=num_workers,
+                    cpu_threads=HARDWARE_CPU_THREADS,
+                )
                 self.model_name = model_size
-                self.status_queue.put(("ready", f"✅ Prêt — {model_size}"))
+                self.status_queue.put(("ready", f"✅ Prêt — {model_size} · {HARDWARE_LABEL}"))
             except Exception as e:
-                self.status_queue.put(("error", f"❌ {e}"))
+                # Repli CPU si le GPU échoue (driver manquant, VRAM insuffisante…)
+                if HARDWARE_DEVICE != "cpu":
+                    self._log_debug(f"[GPU] Échec ({e}), repli CPU")
+                    try:
+                        self.model = WhisperModel(
+                            model_size,
+                            device="cpu",
+                            compute_type="int8",
+                            num_workers=2,
+                            cpu_threads=HARDWARE_CPU_THREADS,
+                        )
+                        self.model_name = model_size
+                        label = f"CPU ({HARDWARE_CPU_THREADS} cœurs) [repli]"
+                        self.status_queue.put(("ready", f"✅ Prêt — {model_size} · {label}"))
+                        return
+                    except Exception as e2:
+                        self.status_queue.put(("error", f"❌ {e2}"))
+                else:
+                    self.status_queue.put(("error", f"❌ {e}"))
         threading.Thread(target=load, daemon=True).start()
 
     def _on_model_change(self, choice):
@@ -604,6 +662,9 @@ class EtceteraApp(ctk.CTk):
                 elif msg_type == "ready":
                     self._set_status(value, "#4caf50")
                     self.record_btn.configure(state="normal")
+                    if hasattr(self, "_splash") and self._splash and not self._splash._closed:
+                        self._splash.close()
+                        self.after(400, self.deiconify)  # affiche la fenêtre principale après le fade
 
                 elif msg_type == "ready_after":
                     self._set_status(value, "#4caf50")
@@ -888,6 +949,115 @@ class EtceteraApp(ctk.CTk):
     def on_close(self):
         self.withdraw()
         self._start_tray()
+
+
+# ─── Splash Screen ────────────────────────────────────────────────────────────
+class SplashScreen(tk.Toplevel):
+    """Fenêtre de chargement animée affichée pendant l'initialisation."""
+
+    _STEPS = [
+        "Initialisation de l'interface...",
+        "Détection du matériel...",
+        "Chargement du moteur audio...",
+        "Chargement du modèle Whisper...",
+        "Presque prêt...",
+    ]
+    _SKELETON_ROWS = 4   # lignes skeleton dans la zone texte
+
+    def __init__(self, parent):
+        super().__init__(parent)
+        self._parent   = parent
+        self._step_idx = 0
+        self._dots     = 0
+        self._closed   = False
+
+        # Fenêtre sans décoration, centrée
+        self.overrideredirect(True)
+        w, h = 420, 260
+        sw = self.winfo_screenwidth()
+        sh = self.winfo_screenheight()
+        self.geometry(f"{w}x{h}+{(sw-w)//2}+{(sh-h)//2}")
+        self.configure(bg="#0d0d1a")
+        self.lift()
+        self.attributes("-topmost", True)
+
+        # Conteneur principal
+        outer = tk.Frame(self, bg="#0d0d1a", bd=1, relief="flat",
+                         highlightthickness=1, highlightbackground="#1e3a5f")
+        outer.pack(fill="both", expand=True, padx=2, pady=2)
+
+        # Logo / titre
+        tk.Label(outer, text="Etcetera v2", bg="#0d0d1a", fg="#4fc3f7",
+                 font=("Segoe UI", 22, "bold")).pack(pady=(28, 4))
+        tk.Label(outer, text="Dictée vocale locale & instantanée",
+                 bg="#0d0d1a", fg="#445566",
+                 font=("Segoe UI", 11)).pack()
+
+        # Blocs skeleton animés (simulent du contenu)
+        sk_frame = tk.Frame(outer, bg="#0d0d1a")
+        sk_frame.pack(pady=(18, 8), padx=36, fill="x")
+        self._sk_bars = []
+        widths = [0.85, 0.65, 0.75, 0.50]
+        for w_ratio in widths:
+            bar = tk.Frame(sk_frame, bg="#1a2744", height=9)
+            bar.pack(fill="x", pady=3)
+            inner = tk.Frame(bar, bg="#1e3a5f", height=9)
+            inner.place(relwidth=w_ratio, relheight=1)
+            self._sk_bars.append(inner)
+
+        # Barre de progression
+        prog_bg = tk.Frame(outer, bg="#1a1a2e", height=4)
+        prog_bg.pack(fill="x", padx=36, pady=(4, 0))
+        self._prog_fill = tk.Frame(prog_bg, bg="#1d4ed8", height=4)
+        self._prog_fill.place(relwidth=0.0, relheight=1)
+
+        # Texte de statut
+        self._status_var = tk.StringVar(value=self._STEPS[0])
+        tk.Label(outer, textvariable=self._status_var,
+                 bg="#0d0d1a", fg="#556677",
+                 font=("Segoe UI", 10)).pack(pady=(8, 0))
+
+        # Matériel détecté
+        hw_fg = "#a78bfa" if HARDWARE_DEVICE == "cuda" else "#445566"
+        hw_icon = "⚡" if HARDWARE_DEVICE == "cuda" else "🖥"
+        tk.Label(outer, text=f"{hw_icon}  {HARDWARE_LABEL}",
+                 bg="#0d0d1a", fg=hw_fg,
+                 font=("Segoe UI", 9)).pack(pady=(2, 0))
+
+        self._animate_skeleton()
+        self._advance_step()
+
+    # ── Animation skeleton (shimmer gauche→droite) ──────────────────────────
+    def _animate_skeleton(self, phase=0):
+        if self._closed:
+            return
+        colors = ["#1a2744", "#1e3a5f", "#243a6f", "#1e3a5f", "#1a2744"]
+        c = colors[phase % len(colors)]
+        for bar in self._sk_bars:
+            bar.configure(bg=c)
+        self.after(120, self._animate_skeleton, phase + 1)
+
+    # ── Avance les étapes de texte + barre ──────────────────────────────────
+    def _advance_step(self):
+        if self._closed:
+            return
+        n = len(self._STEPS)
+        if self._step_idx < n:
+            self._status_var.set(self._STEPS[self._step_idx])
+            progress = self._step_idx / n
+            self._prog_fill.place(relwidth=progress, relheight=1)
+            self._step_idx += 1
+            self.after(600, self._advance_step)
+
+    def close(self):
+        """Appelé depuis le thread principal quand le modèle est prêt."""
+        if self._closed:
+            return
+        self._closed = True
+        # Barre à 100 % puis fade rapide
+        self._prog_fill.place(relwidth=1.0, relheight=1)
+        self._status_var.set("✅ Prêt !")
+        self.after(350, self.destroy)
 
 
 # ─── Lancement ────────────────────────────────────────────────────────────────
