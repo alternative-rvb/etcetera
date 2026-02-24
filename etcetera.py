@@ -645,7 +645,7 @@ class EtceteraApp(ctk.CTk):
                     self._add_to_history(text)
                     if do_inject:
                         self._set_status("⏳ Injection...", "#888")
-                        def _do_inject(t=text):
+                        def _do_inject(t=text + " "):
                             ok = self._inject_text(t)
                             msg   = "✅ Texte injecté !" if ok else "⚠️ Injection échouée — copié"
                             color = "#4caf50" if ok else "#ff9800"
