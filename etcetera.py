@@ -135,8 +135,21 @@ class EtceteraApp(ctk.CTk):
             text_color="#4fc3f7"
         ).pack(side="left", padx=20, pady=12)
 
+        # Badge matériel — affiché une seule fois, discret
+        hw_icon  = "⚡" if HARDWARE_DEVICE == "cuda" else "🖥"
+        hw_color = "#7c3aed" if HARDWARE_DEVICE == "cuda" else "#1e3a5f"
+        hw_fg    = "#c084fc" if HARDWARE_DEVICE == "cuda" else "#6ee7b7"
+        ctk.CTkLabel(
+            header,
+            text=f"{hw_icon} {HARDWARE_LABEL}",
+            font=ctk.CTkFont(size=10),
+            text_color=hw_fg,
+            fg_color=hw_color,
+            corner_radius=4,
+        ).pack(side="right", padx=(0, 8), pady=20)
+
         status_frame = ctk.CTkFrame(header, fg_color="#1a1a2e", corner_radius=8)
-        status_frame.pack(side="right", padx=20, pady=18)
+        status_frame.pack(side="right", padx=(20, 4), pady=18)
 
         self._status_dot = tk.Canvas(
             status_frame, width=10, height=10,
@@ -163,14 +176,6 @@ class EtceteraApp(ctk.CTk):
             font=ctk.CTkFont(size=12), text_color="#7eb3ff"
         )
         self.hotkey_banner_label.pack(side="left", padx=16, pady=8)
-
-        hw_color = "#a78bfa" if HARDWARE_DEVICE == "cuda" else "#6b7280"
-        hw_icon  = "⚡" if HARDWARE_DEVICE == "cuda" else "🖥"
-        ctk.CTkLabel(
-            hotkey_frame,
-            text=f"{hw_icon} {HARDWARE_LABEL}",
-            font=ctk.CTkFont(size=11), text_color=hw_color
-        ).pack(side="right", padx=16, pady=8)
 
         # Toolbar
         toolbar = ctk.CTkFrame(self, fg_color="transparent")
@@ -973,7 +978,7 @@ class SplashScreen(tk.Toplevel):
 
         # Fenêtre sans décoration, centrée
         self.overrideredirect(True)
-        w, h = 420, 260
+        w, h = 440, 300
         sw = self.winfo_screenwidth()
         sh = self.winfo_screenheight()
         self.geometry(f"{w}x{h}+{(sw-w)//2}+{(sh-h)//2}")
@@ -988,20 +993,46 @@ class SplashScreen(tk.Toplevel):
 
         # Logo / titre
         tk.Label(outer, text="Etcetera v2", bg="#0d0d1a", fg="#4fc3f7",
-                 font=("Segoe UI", 22, "bold")).pack(pady=(28, 4))
+                 font=("Segoe UI", 22, "bold")).pack(pady=(22, 2))
         tk.Label(outer, text="Dictée vocale locale & instantanée",
                  bg="#0d0d1a", fg="#445566",
                  font=("Segoe UI", 11)).pack()
 
+        # ── Badge matériel détecté ──────────────────────────────────────────
+        if HARDWARE_DEVICE == "cuda":
+            hw_bg, hw_fg, hw_border = "#1a0d2e", "#c084fc", "#7c3aed"
+            hw_icon  = "⚡ GPU"
+            hw_label = HARDWARE_LABEL.replace("GPU ", "")   # ex: "RTX 3080 (10.0 Go)"
+            hw_mode  = "CUDA · float16"
+        else:
+            hw_bg, hw_fg, hw_border = "#0f1f0f", "#6ee7b7", "#065f46"
+            hw_icon  = "🖥 CPU"
+            hw_label = HARDWARE_LABEL.replace("CPU ", "")   # ex: "(12 cœurs)"
+            hw_mode  = "int8 quantisé"
+
+        badge_outer = tk.Frame(outer, bg=hw_border, padx=1, pady=1)
+        badge_outer.pack(pady=(14, 0), padx=40, fill="x")
+        badge = tk.Frame(badge_outer, bg=hw_bg)
+        badge.pack(fill="both")
+
+        badge_top = tk.Frame(badge, bg=hw_bg)
+        badge_top.pack(fill="x", padx=10, pady=(6, 2))
+        tk.Label(badge_top, text=hw_icon, bg=hw_bg, fg=hw_fg,
+                 font=("Segoe UI", 11, "bold")).pack(side="left")
+        tk.Label(badge_top, text=hw_label, bg=hw_bg, fg=hw_fg,
+                 font=("Segoe UI", 11)).pack(side="left", padx=(6, 0))
+        tk.Label(badge_top, text=hw_mode, bg=hw_bg, fg="#556677",
+                 font=("Segoe UI", 9)).pack(side="right")
+
         # Blocs skeleton animés (simulent du contenu)
         sk_frame = tk.Frame(outer, bg="#0d0d1a")
-        sk_frame.pack(pady=(18, 8), padx=36, fill="x")
+        sk_frame.pack(pady=(14, 6), padx=36, fill="x")
         self._sk_bars = []
         widths = [0.85, 0.65, 0.75, 0.50]
         for w_ratio in widths:
-            bar = tk.Frame(sk_frame, bg="#1a2744", height=9)
-            bar.pack(fill="x", pady=3)
-            inner = tk.Frame(bar, bg="#1e3a5f", height=9)
+            bar = tk.Frame(sk_frame, bg="#1a2744", height=7)
+            bar.pack(fill="x", pady=2)
+            inner = tk.Frame(bar, bg="#1e3a5f", height=7)
             inner.place(relwidth=w_ratio, relheight=1)
             self._sk_bars.append(inner)
 
@@ -1015,14 +1046,7 @@ class SplashScreen(tk.Toplevel):
         self._status_var = tk.StringVar(value=self._STEPS[0])
         tk.Label(outer, textvariable=self._status_var,
                  bg="#0d0d1a", fg="#556677",
-                 font=("Segoe UI", 10)).pack(pady=(8, 0))
-
-        # Matériel détecté
-        hw_fg = "#a78bfa" if HARDWARE_DEVICE == "cuda" else "#445566"
-        hw_icon = "⚡" if HARDWARE_DEVICE == "cuda" else "🖥"
-        tk.Label(outer, text=f"{hw_icon}  {HARDWARE_LABEL}",
-                 bg="#0d0d1a", fg=hw_fg,
-                 font=("Segoe UI", 9)).pack(pady=(2, 0))
+                 font=("Segoe UI", 10)).pack(pady=(6, 0))
 
         self._animate_skeleton()
         self._advance_step()
