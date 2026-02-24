@@ -465,7 +465,7 @@ class EtceteraApp(ctk.CTk):
                     cpu_threads=HARDWARE_CPU_THREADS,
                 )
                 self.model_name = model_size
-                self.status_queue.put(("ready", "● Prêt"))
+                self.status_queue.put(("ready", "Prêt"))
             except Exception as e:
                 # Repli CPU si le GPU échoue (driver manquant, VRAM insuffisante…)
                 if HARDWARE_DEVICE != "cpu":
@@ -479,7 +479,7 @@ class EtceteraApp(ctk.CTk):
                             cpu_threads=HARDWARE_CPU_THREADS,
                         )
                         self.model_name = model_size
-                        self.status_queue.put(("ready", "● Prêt"))
+                        self.status_queue.put(("ready", "Prêt"))
                         return
                     except Exception as e2:
                         self.status_queue.put(("error", f"❌ {e2}"))
@@ -542,7 +542,7 @@ class EtceteraApp(ctk.CTk):
 
     def _transcribe(self):
         if not self.audio_frames:
-            self.status_queue.put(("ready_after", "● Prêt"))
+            self.status_queue.put(("ready_after", "Prêt"))
             return
 
         tmp = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
@@ -615,7 +615,7 @@ class EtceteraApp(ctk.CTk):
         finally:
             os.unlink(tmp.name)
             self._inject_after = False
-            self.status_queue.put(("ready_after", "● Prêt"))
+            self.status_queue.put(("ready_after", "Prêt"))
 
     # ─── Injection dans l'éditeur actif ──────────────────────────────────────
     def _inject_text(self, text):
@@ -706,7 +706,7 @@ class EtceteraApp(ctk.CTk):
                 elif msg_type == "warn":
                     self._set_status(value, "#ff9800")
                     self._log_debug(f"[Avertissement] {value}")
-                    self.after(2000, lambda: self._set_status("● Prêt", "#4caf50"))
+                    self.after(2000, lambda: self._set_status("Prêt", "#4caf50"))
                     self.record_btn.configure(
                         state="normal",
                         text="🔴  Démarrer la dictée",
@@ -723,19 +723,19 @@ class EtceteraApp(ctk.CTk):
                         self._set_status("⏳ Injection...", "#888")
                         def _do_inject(t=text + " "):
                             ok = self._inject_text(t)
-                            msg   = "● Texte injecté !" if ok else "⚠️ Injection échouée — copié"
+                            msg   = "Texte injecté !" if ok else "⚠️ Injection échouée — copié"
                             color = "#4caf50" if ok else "#ff9800"
                             if not ok:
                                 self._log_debug("[Injection] Injection échouée")
                             self.after(0, lambda m=msg, c=color: (
                                 self._set_status(m, c),
-                                self.after(2500, lambda: self._set_status("● Prêt", "#4caf50"))
+                                self.after(2500, lambda: self._set_status("Prêt", "#4caf50"))
                             ))
                         threading.Thread(target=_do_inject, daemon=True).start()
                     else:
                         pyperclip.copy(text)
-                        self._set_status("● Copié dans le presse-papiers", "#4caf50")
-                        self.after(2500, lambda: self._set_status("● Prêt", "#4caf50"))
+                        self._set_status("Copié dans le presse-papiers", "#4caf50")
+                        self.after(2500, lambda: self._set_status("Prêt", "#4caf50"))
 
                 elif msg_type == "start_hotkey":
                     # self.recording est déjà True (posé dans le callback hotkey)
@@ -855,8 +855,8 @@ class EtceteraApp(ctk.CTk):
     def _copy_debug_logs(self):
         if self.debug_logs:
             pyperclip.copy("\n".join(self.debug_logs))
-            self._set_status("● Logs copiés !", "#4caf50")
-            self.after(2000, lambda: self._set_status("● Prêt", "#4caf50"))
+            self._set_status("Logs copiés !", "#4caf50")
+            self.after(2000, lambda: self._set_status("Prêt", "#4caf50"))
 
     # ─── Zone texte ───────────────────────────────────────────────────────────
     def _set_placeholder(self):
@@ -897,8 +897,8 @@ class EtceteraApp(ctk.CTk):
         text = self.textbox.get("1.0", "end-1c")
         if text:
             pyperclip.copy(text)
-            self._set_status("● Copié !", "#4caf50")
-            self.after(2000, lambda: self._set_status("● Prêt", "#4caf50"))
+            self._set_status("Copié !", "#4caf50")
+            self.after(2000, lambda: self._set_status("Prêt", "#4caf50"))
 
     def _save_text(self):
         from tkinter import filedialog
@@ -915,8 +915,8 @@ class EtceteraApp(ctk.CTk):
         if fp:
             with open(fp, "w", encoding="utf-8") as f:
                 f.write(text)
-            self._set_status("● Sauvegardé !", "#4caf50")
-            self.after(2000, lambda: self._set_status("● Prêt", "#4caf50"))
+            self._set_status("Sauvegardé !", "#4caf50")
+            self.after(2000, lambda: self._set_status("Prêt", "#4caf50"))
 
     def _clear_text(self):
         self.textbox.delete("1.0", "end")
@@ -1066,7 +1066,7 @@ class SplashScreen(tk.Toplevel):
         self._closed = True
         # Barre à 100 % puis fade rapide
         self._prog_fill.place(relwidth=1.0, relheight=1)
-        self._status_var.set("● Prêt !")
+        self._status_var.set("Prêt !")
         self.after(350, self.destroy)
 
 
