@@ -135,50 +135,8 @@ class EtceteraApp(ctk.CTk):
             text_color="#4fc3f7"
         ).pack(side="left", padx=20, pady=12)
 
-        # Badge matériel — affiché une seule fois, discret
-        if HARDWARE_DEVICE == "cuda":
-            hw_text  = f"GPU  {HARDWARE_LABEL.replace('GPU ', '')}"
-            hw_color = "#7c3aed"
-            hw_fg    = "#c084fc"
-        else:
-            hw_text  = f"CPU  {HARDWARE_LABEL.replace('CPU ', '')}"
-            hw_color = "#1e3a5f"
-            hw_fg    = "#6ee7b7"
-
-        hw_badge_frame = ctk.CTkFrame(header, fg_color=hw_color, corner_radius=4)
-        hw_badge_frame.pack(side="right", padx=(0, 12), pady=20)
-
-        # Icône canvas (carré stylisé GPU/CPU)
-        ic_size = 14
-        ic = tk.Canvas(hw_badge_frame, width=ic_size, height=ic_size,
-                       bg=hw_color, highlightthickness=0)
-        ic.pack(side="left", padx=(6, 2), pady=4)
-        if HARDWARE_DEVICE == "cuda":
-            # Symbole GPU : rectangle + 3 petits carrés (pipelines)
-            ic.create_rectangle(1, 4, 13, 10, outline=hw_fg, width=1, fill="")
-            for x in (3, 6, 9):
-                ic.create_rectangle(x, 1, x+2, 4, fill=hw_fg, outline="")
-                ic.create_rectangle(x, 10, x+2, 13, fill=hw_fg, outline="")
-        else:
-            # Symbole CPU : carré avec croix intérieure
-            ic.create_rectangle(2, 2, 12, 12, outline=hw_fg, width=1, fill="")
-            ic.create_rectangle(4, 4, 10, 10, outline=hw_fg, width=1, fill="")
-            for pos in (2, 6, 10):
-                ic.create_line(pos, 0, pos, 2,  fill=hw_fg, width=1)
-                ic.create_line(pos, 12, pos, 14, fill=hw_fg, width=1)
-                ic.create_line(0, pos, 2, pos,  fill=hw_fg, width=1)
-                ic.create_line(12, pos, 14, pos, fill=hw_fg, width=1)
-
-        ctk.CTkLabel(
-            hw_badge_frame,
-            text=hw_text,
-            font=ctk.CTkFont(size=10),
-            text_color=hw_fg,
-            fg_color=hw_color,
-        ).pack(side="left", padx=(0, 6), pady=4)
-
         status_frame = ctk.CTkFrame(header, fg_color="#1a1a2e", corner_radius=8)
-        status_frame.pack(side="right", padx=(20, 4), pady=18)
+        status_frame.pack(side="right", padx=20, pady=18)
 
         self._status_dot = tk.Canvas(
             status_frame, width=10, height=10,
@@ -350,24 +308,50 @@ class EtceteraApp(ctk.CTk):
             variable=self.filler_var, font=ctk.CTkFont(size=11)
         ).pack(anchor="w", pady=2)
 
-        # Colonne 3 — Raccourci
+        # Colonne 3 — Matériel
         col3 = ctk.CTkFrame(adv_inner, fg_color="transparent")
-        col3.pack(side="left", anchor="n")
+        col3.pack(side="left", padx=(0, 24), anchor="n")
 
         ctk.CTkLabel(
-            col3, text="RACCOURCI",
+            col3, text="MATÉRIEL",
+            font=ctk.CTkFont(size=10, weight="bold"), text_color="#64748b"
+        ).pack(anchor="w")
+
+        if HARDWARE_DEVICE == "cuda":
+            hw_fg, hw_bg = "#c084fc", "#2d1b4e"
+            hw_mode = f"CUDA · {HARDWARE_COMPUTE}"
+        else:
+            hw_fg, hw_bg = "#6ee7b7", "#0d2d20"
+            hw_mode = f"int8 · {HARDWARE_CPU_THREADS} threads"
+
+        ctk.CTkLabel(
+            col3, text=HARDWARE_LABEL,
+            font=ctk.CTkFont(size=12, weight="bold"), text_color=hw_fg,
+            fg_color=hw_bg, corner_radius=4
+        ).pack(anchor="w", pady=(6, 2))
+        ctk.CTkLabel(
+            col3, text=hw_mode,
+            font=ctk.CTkFont(size=11), text_color="#64748b"
+        ).pack(anchor="w")
+
+        # Colonne 4 — Raccourci
+        col4 = ctk.CTkFrame(adv_inner, fg_color="transparent")
+        col4.pack(side="left", anchor="n")
+
+        ctk.CTkLabel(
+            col4, text="RACCOURCI",
             font=ctk.CTkFont(size=10, weight="bold"), text_color="#64748b"
         ).pack(anchor="w")
 
         self.hotkey_label = ctk.CTkLabel(
-            col3, text=self._hotkey_display(),
+            col4, text=self._hotkey_display(),
             font=ctk.CTkFont(size=12), text_color="#7eb3ff",
             fg_color="#1a2744", corner_radius=4
         )
         self.hotkey_label.pack(anchor="w", pady=(6, 4))
 
         self.hotkey_capture_btn = ctk.CTkButton(
-            col3, text="Changer...",
+            col4, text="Changer...",
             font=ctk.CTkFont(size=12), height=28, width=100,
             fg_color="#1e3a5f", hover_color="#1d4ed8",
             command=self._start_hotkey_capture
@@ -375,7 +359,7 @@ class EtceteraApp(ctk.CTk):
         self.hotkey_capture_btn.pack(anchor="w", pady=2)
 
         self.hotkey_capture_label = ctk.CTkLabel(
-            col3, text="", font=ctk.CTkFont(size=11), text_color="#f59e0b"
+            col4, text="", font=ctk.CTkFont(size=11), text_color="#f59e0b"
         )
         self.hotkey_capture_label.pack(anchor="w")
 
@@ -481,7 +465,7 @@ class EtceteraApp(ctk.CTk):
                     cpu_threads=HARDWARE_CPU_THREADS,
                 )
                 self.model_name = model_size
-                self.status_queue.put(("ready", f"✅ Prêt — {model_size} · {HARDWARE_LABEL}"))
+                self.status_queue.put(("ready", "● Prêt"))
             except Exception as e:
                 # Repli CPU si le GPU échoue (driver manquant, VRAM insuffisante…)
                 if HARDWARE_DEVICE != "cpu":
@@ -495,8 +479,7 @@ class EtceteraApp(ctk.CTk):
                             cpu_threads=HARDWARE_CPU_THREADS,
                         )
                         self.model_name = model_size
-                        label = f"CPU ({HARDWARE_CPU_THREADS} cœurs) [repli]"
-                        self.status_queue.put(("ready", f"✅ Prêt — {model_size} · {label}"))
+                        self.status_queue.put(("ready", "● Prêt"))
                         return
                     except Exception as e2:
                         self.status_queue.put(("error", f"❌ {e2}"))
@@ -559,7 +542,7 @@ class EtceteraApp(ctk.CTk):
 
     def _transcribe(self):
         if not self.audio_frames:
-            self.status_queue.put(("ready_after", "✅ Prêt"))
+            self.status_queue.put(("ready_after", "● Prêt"))
             return
 
         tmp = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
@@ -632,7 +615,7 @@ class EtceteraApp(ctk.CTk):
         finally:
             os.unlink(tmp.name)
             self._inject_after = False
-            self.status_queue.put(("ready_after", "✅ Prêt"))
+            self.status_queue.put(("ready_after", "● Prêt"))
 
     # ─── Injection dans l'éditeur actif ──────────────────────────────────────
     def _inject_text(self, text):
@@ -723,7 +706,7 @@ class EtceteraApp(ctk.CTk):
                 elif msg_type == "warn":
                     self._set_status(value, "#ff9800")
                     self._log_debug(f"[Avertissement] {value}")
-                    self.after(2000, lambda: self._set_status("✅ Prêt", "#4caf50"))
+                    self.after(2000, lambda: self._set_status("● Prêt", "#4caf50"))
                     self.record_btn.configure(
                         state="normal",
                         text="🔴  Démarrer la dictée",
@@ -740,19 +723,19 @@ class EtceteraApp(ctk.CTk):
                         self._set_status("⏳ Injection...", "#888")
                         def _do_inject(t=text + " "):
                             ok = self._inject_text(t)
-                            msg   = "✅ Texte injecté !" if ok else "⚠️ Injection échouée — copié"
+                            msg   = "● Texte injecté !" if ok else "⚠️ Injection échouée — copié"
                             color = "#4caf50" if ok else "#ff9800"
                             if not ok:
                                 self._log_debug("[Injection] Injection échouée")
                             self.after(0, lambda m=msg, c=color: (
                                 self._set_status(m, c),
-                                self.after(2500, lambda: self._set_status("✅ Prêt", "#4caf50"))
+                                self.after(2500, lambda: self._set_status("● Prêt", "#4caf50"))
                             ))
                         threading.Thread(target=_do_inject, daemon=True).start()
                     else:
                         pyperclip.copy(text)
-                        self._set_status("✅ Copié dans le presse-papiers", "#4caf50")
-                        self.after(2500, lambda: self._set_status("✅ Prêt", "#4caf50"))
+                        self._set_status("● Copié dans le presse-papiers", "#4caf50")
+                        self.after(2500, lambda: self._set_status("● Prêt", "#4caf50"))
 
                 elif msg_type == "start_hotkey":
                     # self.recording est déjà True (posé dans le callback hotkey)
@@ -872,8 +855,8 @@ class EtceteraApp(ctk.CTk):
     def _copy_debug_logs(self):
         if self.debug_logs:
             pyperclip.copy("\n".join(self.debug_logs))
-            self._set_status("✅ Logs copiés !", "#4caf50")
-            self.after(2000, lambda: self._set_status("✅ Prêt", "#4caf50"))
+            self._set_status("● Logs copiés !", "#4caf50")
+            self.after(2000, lambda: self._set_status("● Prêt", "#4caf50"))
 
     # ─── Zone texte ───────────────────────────────────────────────────────────
     def _set_placeholder(self):
@@ -914,8 +897,8 @@ class EtceteraApp(ctk.CTk):
         text = self.textbox.get("1.0", "end-1c")
         if text:
             pyperclip.copy(text)
-            self._set_status("✅ Copié !", "#4caf50")
-            self.after(2000, lambda: self._set_status("✅ Prêt", "#4caf50"))
+            self._set_status("● Copié !", "#4caf50")
+            self.after(2000, lambda: self._set_status("● Prêt", "#4caf50"))
 
     def _save_text(self):
         from tkinter import filedialog
@@ -932,8 +915,8 @@ class EtceteraApp(ctk.CTk):
         if fp:
             with open(fp, "w", encoding="utf-8") as f:
                 f.write(text)
-            self._set_status("✅ Sauvegardé !", "#4caf50")
-            self.after(2000, lambda: self._set_status("✅ Prêt", "#4caf50"))
+            self._set_status("● Sauvegardé !", "#4caf50")
+            self.after(2000, lambda: self._set_status("● Prêt", "#4caf50"))
 
     def _clear_text(self):
         self.textbox.delete("1.0", "end")
@@ -1083,7 +1066,7 @@ class SplashScreen(tk.Toplevel):
         self._closed = True
         # Barre à 100 % puis fade rapide
         self._prog_fill.place(relwidth=1.0, relheight=1)
-        self._status_var.set("✅ Prêt !")
+        self._status_var.set("● Prêt !")
         self.after(350, self.destroy)
 
 
