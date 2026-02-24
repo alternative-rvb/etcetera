@@ -136,17 +136,46 @@ class EtceteraApp(ctk.CTk):
         ).pack(side="left", padx=20, pady=12)
 
         # Badge matériel — affiché une seule fois, discret
-        hw_icon  = "⚡" if HARDWARE_DEVICE == "cuda" else "🖥"
-        hw_color = "#7c3aed" if HARDWARE_DEVICE == "cuda" else "#1e3a5f"
-        hw_fg    = "#c084fc" if HARDWARE_DEVICE == "cuda" else "#6ee7b7"
+        if HARDWARE_DEVICE == "cuda":
+            hw_text  = f"GPU  {HARDWARE_LABEL.replace('GPU ', '')}"
+            hw_color = "#7c3aed"
+            hw_fg    = "#c084fc"
+        else:
+            hw_text  = f"CPU  {HARDWARE_LABEL.replace('CPU ', '')}"
+            hw_color = "#1e3a5f"
+            hw_fg    = "#6ee7b7"
+
+        hw_badge_frame = ctk.CTkFrame(header, fg_color=hw_color, corner_radius=4)
+        hw_badge_frame.pack(side="right", padx=(0, 12), pady=20)
+
+        # Icône canvas (carré stylisé GPU/CPU)
+        ic_size = 14
+        ic = tk.Canvas(hw_badge_frame, width=ic_size, height=ic_size,
+                       bg=hw_color, highlightthickness=0)
+        ic.pack(side="left", padx=(6, 2), pady=4)
+        if HARDWARE_DEVICE == "cuda":
+            # Symbole GPU : rectangle + 3 petits carrés (pipelines)
+            ic.create_rectangle(1, 4, 13, 10, outline=hw_fg, width=1, fill="")
+            for x in (3, 6, 9):
+                ic.create_rectangle(x, 1, x+2, 4, fill=hw_fg, outline="")
+                ic.create_rectangle(x, 10, x+2, 13, fill=hw_fg, outline="")
+        else:
+            # Symbole CPU : carré avec croix intérieure
+            ic.create_rectangle(2, 2, 12, 12, outline=hw_fg, width=1, fill="")
+            ic.create_rectangle(4, 4, 10, 10, outline=hw_fg, width=1, fill="")
+            for pos in (2, 6, 10):
+                ic.create_line(pos, 0, pos, 2,  fill=hw_fg, width=1)
+                ic.create_line(pos, 12, pos, 14, fill=hw_fg, width=1)
+                ic.create_line(0, pos, 2, pos,  fill=hw_fg, width=1)
+                ic.create_line(12, pos, 14, pos, fill=hw_fg, width=1)
+
         ctk.CTkLabel(
-            header,
-            text=f"{hw_icon} {HARDWARE_LABEL}",
+            hw_badge_frame,
+            text=hw_text,
             font=ctk.CTkFont(size=10),
             text_color=hw_fg,
             fg_color=hw_color,
-            corner_radius=4,
-        ).pack(side="right", padx=(0, 8), pady=20)
+        ).pack(side="left", padx=(0, 6), pady=4)
 
         status_frame = ctk.CTkFrame(header, fg_color="#1a1a2e", corner_radius=8)
         status_frame.pack(side="right", padx=(20, 4), pady=18)
@@ -997,32 +1026,6 @@ class SplashScreen(tk.Toplevel):
         tk.Label(outer, text="Dictée vocale locale & instantanée",
                  bg="#0d0d1a", fg="#445566",
                  font=("Segoe UI", 11)).pack()
-
-        # ── Badge matériel détecté ──────────────────────────────────────────
-        if HARDWARE_DEVICE == "cuda":
-            hw_bg, hw_fg, hw_border = "#1a0d2e", "#c084fc", "#7c3aed"
-            hw_icon  = "⚡ GPU"
-            hw_label = HARDWARE_LABEL.replace("GPU ", "")   # ex: "RTX 3080 (10.0 Go)"
-            hw_mode  = "CUDA · float16"
-        else:
-            hw_bg, hw_fg, hw_border = "#0f1f0f", "#6ee7b7", "#065f46"
-            hw_icon  = "🖥 CPU"
-            hw_label = HARDWARE_LABEL.replace("CPU ", "")   # ex: "(12 cœurs)"
-            hw_mode  = "int8 quantisé"
-
-        badge_outer = tk.Frame(outer, bg=hw_border, padx=1, pady=1)
-        badge_outer.pack(pady=(14, 0), padx=40, fill="x")
-        badge = tk.Frame(badge_outer, bg=hw_bg)
-        badge.pack(fill="both")
-
-        badge_top = tk.Frame(badge, bg=hw_bg)
-        badge_top.pack(fill="x", padx=10, pady=(6, 2))
-        tk.Label(badge_top, text=hw_icon, bg=hw_bg, fg=hw_fg,
-                 font=("Segoe UI", 11, "bold")).pack(side="left")
-        tk.Label(badge_top, text=hw_label, bg=hw_bg, fg=hw_fg,
-                 font=("Segoe UI", 11)).pack(side="left", padx=(6, 0))
-        tk.Label(badge_top, text=hw_mode, bg=hw_bg, fg="#556677",
-                 font=("Segoe UI", 9)).pack(side="right")
 
         # Blocs skeleton animés (simulent du contenu)
         sk_frame = tk.Frame(outer, bg="#0d0d1a")
