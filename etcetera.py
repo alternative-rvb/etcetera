@@ -74,6 +74,23 @@ class EtceteraApp(ctk.CTk):
         self._tray_icon       = None   # icône system tray
         self._audio_running   = False  # verrou anti-double thread audio
 
+        # Réglages avancés — transcription
+        self._beam_size_str   = None   # StringVar, initialisé dans _build_ui
+        self._temperature_str = None   # StringVar, initialisé dans _build_ui
+        self._prompt_var      = None   # StringVar, initialisé dans _build_ui
+
+        # Réglages avancés — post-traitement
+        self.autocap_var      = None   # BooleanVar, initialisé dans _build_ui
+        self.filler_var       = None   # BooleanVar, initialisé dans _build_ui
+
+        # Réglages avancés — hotkey
+        self.hotkey_trigger   = "space"
+        self.hotkey_mods      = ["ctrl", "shift"]
+        self._hotkey_capture  = False
+
+        # Panneau avancé
+        self.adv_mode         = False
+
         self._build_ui()
         self._load_model()
         self._poll_status()
@@ -113,12 +130,13 @@ class EtceteraApp(ctk.CTk):
         hotkey_frame.pack(fill="x")
         hotkey_frame.pack_propagate(False)
 
-        ctk.CTkLabel(
+        self.hotkey_banner_label = ctk.CTkLabel(
             hotkey_frame,
             text="⌨️  Raccourci global :  Ctrl + Shift + Espace  "
                  "— Maintenez appuyé pour dicter, relâchez pour transcrire & injecter",
             font=ctk.CTkFont(size=12), text_color="#7eb3ff"
-        ).pack(side="left", padx=16, pady=8)
+        )
+        self.hotkey_banner_label.pack(side="left", padx=16, pady=8)
 
         # Toolbar
         toolbar = ctk.CTkFrame(self, fg_color="transparent")
@@ -147,6 +165,14 @@ class EtceteraApp(ctk.CTk):
             variable=self.inject_var, font=ctk.CTkFont(size=12),
             command=lambda: setattr(self, "inject_mode", self.inject_var.get())
         ).pack(side="left", padx=(10, 0))
+
+        self.adv_btn = ctk.CTkButton(
+            toolbar, text="⚙ Avancé",
+            font=ctk.CTkFont(size=12), height=28, width=90,
+            fg_color="#333", hover_color="#444",
+            command=self._toggle_adv
+        )
+        self.adv_btn.pack(side="right", padx=(0, 6))
 
         self.debug_btn = ctk.CTkButton(
             toolbar, text="🐛 Debug",
@@ -185,6 +211,105 @@ class EtceteraApp(ctk.CTk):
         self.volume_bar = ctk.CTkProgressBar(vol_frame, width=200, height=8, corner_radius=4)
         self.volume_bar.set(0)
         self.volume_bar.pack(side="left", padx=10)
+
+        # ── Panel Avancé (caché par défaut) ───────────────────────────────────
+        self.adv_frame = ctk.CTkFrame(
+            self, corner_radius=8,
+            fg_color="#111827", border_width=1, border_color="#334155"
+        )
+        # Ne pas pack() ici — affiché uniquement quand adv_mode est actif
+
+        adv_inner = ctk.CTkFrame(self.adv_frame, fg_color="transparent")
+        adv_inner.pack(fill="x", padx=12, pady=8)
+
+        # Colonne 1 — Transcription
+        col1 = ctk.CTkFrame(adv_inner, fg_color="transparent")
+        col1.pack(side="left", padx=(0, 24), anchor="n")
+
+        ctk.CTkLabel(
+            col1, text="TRANSCRIPTION",
+            font=ctk.CTkFont(size=10, weight="bold"), text_color="#64748b"
+        ).pack(anchor="w")
+
+        beam_row = ctk.CTkFrame(col1, fg_color="transparent")
+        beam_row.pack(fill="x", pady=(6, 2))
+        ctk.CTkLabel(beam_row, text="Beam size :", font=ctk.CTkFont(size=12)).pack(side="left")
+        self._beam_size_str = ctk.StringVar(value="1")
+        ctk.CTkOptionMenu(
+            beam_row, values=["1", "2", "3", "4", "5"],
+            variable=self._beam_size_str,
+            width=70, font=ctk.CTkFont(size=12)
+        ).pack(side="left", padx=(8, 0))
+
+        temp_row = ctk.CTkFrame(col1, fg_color="transparent")
+        temp_row.pack(fill="x", pady=2)
+        ctk.CTkLabel(temp_row, text="Température :", font=ctk.CTkFont(size=12)).pack(side="left")
+        self._temperature_str = ctk.StringVar(value="0.0")
+        ctk.CTkOptionMenu(
+            temp_row, values=["0.0", "0.2", "0.4", "0.6", "0.8", "1.0"],
+            variable=self._temperature_str,
+            width=70, font=ctk.CTkFont(size=12)
+        ).pack(side="left", padx=(8, 0))
+
+        prompt_row = ctk.CTkFrame(col1, fg_color="transparent")
+        prompt_row.pack(fill="x", pady=2)
+        ctk.CTkLabel(prompt_row, text="Prompt initial :", font=ctk.CTkFont(size=12)).pack(anchor="w")
+        self._prompt_var = ctk.StringVar(value="")
+        ctk.CTkEntry(
+            col1, textvariable=self._prompt_var,
+            placeholder_text="Ex : Bonjour, comment allez-vous ?",
+            width=220, font=ctk.CTkFont(size=11)
+        ).pack(anchor="w", pady=(2, 0))
+
+        # Colonne 2 — Post-traitement
+        col2 = ctk.CTkFrame(adv_inner, fg_color="transparent")
+        col2.pack(side="left", padx=(0, 24), anchor="n")
+
+        ctk.CTkLabel(
+            col2, text="POST-TRAITEMENT",
+            font=ctk.CTkFont(size=10, weight="bold"), text_color="#64748b"
+        ).pack(anchor="w")
+
+        self.autocap_var = ctk.BooleanVar(value=False)
+        ctk.CTkCheckBox(
+            col2, text="Majuscule initiale",
+            variable=self.autocap_var, font=ctk.CTkFont(size=12)
+        ).pack(anchor="w", pady=(6, 2))
+
+        self.filler_var = ctk.BooleanVar(value=False)
+        ctk.CTkCheckBox(
+            col2, text="Supprimer mots parasites\n(euh, hmm, ah, ben, hein)",
+            variable=self.filler_var, font=ctk.CTkFont(size=11)
+        ).pack(anchor="w", pady=2)
+
+        # Colonne 3 — Raccourci
+        col3 = ctk.CTkFrame(adv_inner, fg_color="transparent")
+        col3.pack(side="left", anchor="n")
+
+        ctk.CTkLabel(
+            col3, text="RACCOURCI",
+            font=ctk.CTkFont(size=10, weight="bold"), text_color="#64748b"
+        ).pack(anchor="w")
+
+        self.hotkey_label = ctk.CTkLabel(
+            col3, text=self._hotkey_display(),
+            font=ctk.CTkFont(size=12), text_color="#7eb3ff",
+            fg_color="#1a2744", corner_radius=4
+        )
+        self.hotkey_label.pack(anchor="w", pady=(6, 4))
+
+        self.hotkey_capture_btn = ctk.CTkButton(
+            col3, text="Changer...",
+            font=ctk.CTkFont(size=12), height=28, width=100,
+            fg_color="#1e3a5f", hover_color="#1d4ed8",
+            command=self._start_hotkey_capture
+        )
+        self.hotkey_capture_btn.pack(anchor="w", pady=2)
+
+        self.hotkey_capture_label = ctk.CTkLabel(
+            col3, text="", font=ctk.CTkFont(size=11), text_color="#f59e0b"
+        )
+        self.hotkey_capture_label.pack(anchor="w")
 
         # Panel debug (caché par défaut)
         self.debug_frame = ctk.CTkFrame(self, corner_radius=8, fg_color="#1a1a1a", border_width=1, border_color="#ff5722")
@@ -249,29 +374,29 @@ class EtceteraApp(ctk.CTk):
 
     # ─── Raccourci clavier global ─────────────────────────────────────────────
     def _register_hotkey(self):
-        def on_space_press(e):
-            if keyboard.is_pressed("ctrl") and keyboard.is_pressed("shift"):
-                # Verrou immédiat pour éviter les déclenchements multiples
-                # dus à la répétition automatique de la touche maintenue
+        trigger = self.hotkey_trigger
+        mods    = self.hotkey_mods
+
+        def on_press(e):
+            if all(keyboard.is_pressed(m) for m in mods):
                 if not self.hotkey_held and not self.recording and self.model:
-                    # Capturer la fenêtre active AVANT que le focus bouge
                     try:
                         import ctypes
                         self._target_hwnd = ctypes.windll.user32.GetForegroundWindow()
                     except Exception:
                         self._target_hwnd = None
                     self.hotkey_held = True
-                    self.recording   = True   # bloque tout nouveau déclenchement
+                    self.recording   = True
                     self.status_queue.put(("start_hotkey", None))
 
-        def on_space_release(e):
+        def on_release(e):
             if self.hotkey_held:
                 self.hotkey_held = False
                 self.status_queue.put(("stop_hotkey", None))
 
         try:
-            keyboard.on_press_key("space", on_space_press)
-            keyboard.on_release_key("space", on_space_release)
+            keyboard.on_press_key(trigger, on_press)
+            keyboard.on_release_key(trigger, on_release)
         except Exception as ex:
             self._log_debug(f"[Hotkey] {ex}")
 
@@ -355,20 +480,38 @@ class EtceteraApp(ctk.CTk):
         wf.close()
 
         try:
-            lang = LANGUAGES[self.lang_var.get()]  # None = auto-détection
+            lang        = LANGUAGES[self.lang_var.get()]  # None = auto-détection
+            beam_size   = int(self._beam_size_str.get())   if self._beam_size_str   else 1
+            temperature = float(self._temperature_str.get()) if self._temperature_str else 0.0
+            prompt      = self._prompt_var.get().strip()    if self._prompt_var       else ""
+
             transcribe_kwargs = dict(
-                beam_size=1,
-                temperature=0,
+                beam_size=beam_size,
+                temperature=temperature,
                 no_speech_threshold=0.6,
                 log_prob_threshold=-1.0,
                 condition_on_previous_text=False,
             )
             if lang is not None:
                 transcribe_kwargs["language"] = lang
+            if prompt:
+                transcribe_kwargs["initial_prompt"] = prompt
+
             def _collect(segs):
                 raw = " ".join(s.text.strip() for s in segs if s.no_speech_prob < 0.5).strip()
                 # Assure un espace après . , ! ? : ; sauf en fin de chaîne
-                return re.sub(r'([.,!?:;])(?=[^\s])', r'\1 ', raw)
+                text = re.sub(r'([.,!?:;])(?=[^\s])', r'\1 ', raw)
+                # Suppression des mots parasites (opt-in)
+                if self.filler_var and self.filler_var.get():
+                    text = re.sub(
+                        r'\b(euh+|hmm+|ah|ben|hein)\b[\s,]*',
+                        ' ', text, flags=re.IGNORECASE
+                    ).strip()
+                    text = re.sub(r'\s{2,}', ' ', text)
+                # Majuscule initiale (opt-in)
+                if self.autocap_var and self.autocap_var.get() and text:
+                    text = text[0].upper() + text[1:]
+                return text
 
             try:
                 segs, info = self.model.transcribe(
@@ -573,6 +716,65 @@ class EtceteraApp(ctk.CTk):
         else:
             self.debug_btn.configure(fg_color="#333", hover_color="#444")
             self.debug_frame.pack_forget()
+
+    # ─── Panneau Avancé ───────────────────────────────────────────────────────
+    def _hotkey_display(self):
+        parts = [m.capitalize() for m in self.hotkey_mods]
+        parts.append(self.hotkey_trigger.capitalize())
+        return " + ".join(parts)
+
+    def _toggle_adv(self):
+        self.adv_mode = not self.adv_mode
+        if self.adv_mode:
+            self.adv_btn.configure(fg_color="#1e3a5f", hover_color="#1d4ed8")
+            anchor = self.debug_frame if self.debug_mode else self._bottom_ref
+            self.adv_frame.pack(fill="x", padx=15, pady=(4, 0), before=anchor)
+        else:
+            self.adv_btn.configure(fg_color="#333", hover_color="#444")
+            self.adv_frame.pack_forget()
+
+    def _start_hotkey_capture(self):
+        if self._hotkey_capture or self.recording:
+            return
+        self._hotkey_capture = True
+        self.hotkey_capture_btn.configure(state="disabled", text="En attente...")
+        self.hotkey_capture_label.configure(text="Appuyez sur votre combinaison...")
+        try:
+            keyboard.unhook_all()
+        except Exception:
+            pass
+
+        def _on_capture(event):
+            if not self._hotkey_capture:
+                return
+            if event.name in ("ctrl", "shift", "alt", "windows", "caps lock", "unknown"):
+                return
+            mods = [m for m in ("ctrl", "shift", "alt") if keyboard.is_pressed(m)]
+            new_trigger = event.name
+            new_mods    = mods
+            self._hotkey_capture = False
+            self.after(0, lambda: self._apply_new_hotkey(new_trigger, new_mods))
+            return False
+
+        keyboard.hook(_on_capture)
+
+    def _apply_new_hotkey(self, trigger, mods):
+        self.hotkey_trigger = trigger
+        self.hotkey_mods    = mods
+        display = self._hotkey_display()
+        self.hotkey_label.configure(text=display)
+        self.hotkey_capture_label.configure(text="")
+        self.hotkey_capture_btn.configure(state="normal", text="Changer...")
+        self.hotkey_banner_label.configure(
+            text=f"⌨️  Raccourci global :  {display}  "
+                 "— Maintenez appuyé pour dicter, relâchez pour transcrire & injecter"
+        )
+        try:
+            keyboard.unhook_all()
+        except Exception:
+            pass
+        self._register_hotkey()
+        self._log_debug(f"[Hotkey] Nouveau raccourci : {display}")
 
     def _copy_debug_logs(self):
         if self.debug_logs:
